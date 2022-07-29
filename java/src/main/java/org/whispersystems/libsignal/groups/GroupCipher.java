@@ -63,11 +63,13 @@ public class GroupCipher {
         SenderKeyRecord  record         = senderKeyStore.loadSenderKey(senderKeyId);
         SenderKeyState   senderKeyState = record.getSenderKeyState();
         SenderMessageKey senderKey      = senderKeyState.getSenderChainKey().getSenderMessageKey();
-        byte[]           ciphertext     = getCipherText(senderKey.getIv(), senderKey.getCipherKey(), paddedPlaintext);
+
+        //byte[]           ciphertext     = getCipherText(senderKey.getIv(), senderKey.getCipherKey(), paddedPlaintext);
 
         SenderKeyMessage senderKeyMessage = new SenderKeyMessage(senderKeyState.getKeyId(),
                                                                  senderKey.getIteration(),
-                                                                 ciphertext,
+                                                                 // ciphertext, //dtsonov: todo: Decipher on place when possible.
+                                                                 getCipherText(senderKey.getIv(), senderKey.getCipherKey(), paddedPlaintext),
                                                                  senderKeyState.getSigningKeyPrivate());
 
         senderKeyState.setSenderChainKey(senderKeyState.getSenderChainKey().getNext());
@@ -132,13 +134,13 @@ public class GroupCipher {
 
         byte[] plaintext = getPlainText(senderKey.getIv(), senderKey.getCipherKey(), senderKeyMessage.getCipherText());
 
-        callback.handlePlaintext(plaintext);
+        callback.handlePlaintext(plaintext);  //dtsonov: todo: CB for what ?? Decrypt on return or in CB if possible.
 
         senderKeyStore.storeSenderKey(senderKeyId, record);
 
         return plaintext;
       } catch (org.whispersystems.libsignal.InvalidKeyException | InvalidKeyIdException e) {
-        throw new InvalidMessageException(e);
+        throw new InvalidMessageException(e); //dtsonov: todo: Remove this throw, reveals key info.
       }
     }
   }
@@ -162,12 +164,12 @@ public class GroupCipher {
     }
 
     while (senderChainKey.getIteration() < iteration) {
-      senderKeyState.addSenderMessageKey(senderChainKey.getSenderMessageKey());
+      senderKeyState.addSenderMessageKey(senderChainKey.getSenderMessageKey()); //dtsonov: todo: review
       senderChainKey = senderChainKey.getNext();
     }
 
     senderKeyState.setSenderChainKey(senderChainKey.getNext());
-    return senderChainKey.getSenderMessageKey();
+    return senderChainKey.getSenderMessageKey();  //dtsonov: todo: review
   }
 
   private byte[] getPlainText(byte[] iv, byte[] key, byte[] ciphertext)
@@ -175,13 +177,13 @@ public class GroupCipher {
   {
     try {
       IvParameterSpec ivParameterSpec = new IvParameterSpec(iv);
-      Cipher          cipher          = Cipher.getInstance("AES/CBC/PKCS5Padding");
+      Cipher          cipher          = Cipher.getInstance("AES/CBC/PKCS5Padding"); //dtsonov: todo: Ready to replace with aes-gcm. Need debug case to test !
 
       cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key, "AES"), ivParameterSpec);
 
       return cipher.doFinal(ciphertext);
     } catch (NoSuchAlgorithmException | NoSuchPaddingException | java.security.InvalidKeyException |
-             InvalidAlgorithmParameterException e)
+             InvalidAlgorithmParameterException e)  //dtsonov: todo: Bad place/exception throw. Reveals crypto info. With AES-GCM will hide this.
     {
       throw new AssertionError(e);
     } catch (IllegalBlockSizeException | BadPaddingException e) {
@@ -192,19 +194,19 @@ public class GroupCipher {
   private byte[] getCipherText(byte[] iv, byte[] key, byte[] plaintext) {
     try {
       IvParameterSpec ivParameterSpec = new IvParameterSpec(iv);
-      Cipher          cipher          = Cipher.getInstance("AES/CBC/PKCS5Padding");
+      Cipher          cipher          = Cipher.getInstance("AES/CBC/PKCS5Padding"); //dtsonov: todo: Ready to replace with aes-gcm. Need debug condition to test !
 
       cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, "AES"), ivParameterSpec);
 
       return cipher.doFinal(plaintext);
     } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidAlgorithmParameterException |
-             IllegalBlockSizeException | BadPaddingException | java.security.InvalidKeyException e)
+             IllegalBlockSizeException | BadPaddingException | java.security.InvalidKeyException e)   //dtsonov: todo: Bad exception throw. Reveal crypto info. It will AES-GCM will hide this.
     {
       throw new AssertionError(e);
     }
   }
 
-  private static class NullDecryptionCallback implements DecryptionCallback {
+  private static class NullDecryptionCallback implements DecryptionCallback { //dtsonov: What is this CB for ?
     @Override
     public void handlePlaintext(byte[] plaintext) {}
   }

@@ -108,7 +108,7 @@ public class SignalMessage implements CiphertextMessage {
     return ciphertext;
   }
 
-  public void verifyMac(IdentityKey senderIdentityKey, IdentityKey receiverIdentityKey, SecretKeySpec macKey)
+  public void verifyMac(IdentityKey senderIdentityKey, IdentityKey receiverIdentityKey, SecretKeySpec macKey) //dtsonov: Verify this Mac verification !
       throws InvalidMessageException
   {
     byte[][] parts    = ByteUtil.split(serialized, serialized.length - MAC_LENGTH, MAC_LENGTH);

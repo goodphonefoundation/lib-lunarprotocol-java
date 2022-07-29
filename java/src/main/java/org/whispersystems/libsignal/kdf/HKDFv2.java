@@ -5,6 +5,10 @@
  */
 package org.whispersystems.libsignal.kdf;
 
+/* dtsonov:
+todo: Update or remove HKDFv2 !
+* */
+
 public class HKDFv2 extends HKDF {
   @Override
   protected int getIterationStartOffset() {

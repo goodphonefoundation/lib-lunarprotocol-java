@@ -14,6 +14,8 @@ import java.security.NoSuchAlgorithmException;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import org.whispersystems.libsignal.logging.Log;
+
 
 public class ChainKey {
 
@@ -48,7 +50,10 @@ public class ChainKey {
     byte[]                keyMaterialBytes = kdf.deriveSecrets(inputKeyMaterial, "WhisperMessageKeys".getBytes(), DerivedMessageSecrets.SIZE);
     DerivedMessageSecrets keyMaterial      = new DerivedMessageSecrets(keyMaterialBytes);
 
-    return new MessageKeys(keyMaterial.getCipherKey(), keyMaterial.getMacKey(), keyMaterial.getIv(), index);
+    Log.i("kdf.deriveSecrets", "");
+
+    //dtsonov: todo: Add source of AAD bytes for GCM mode.
+    return new MessageKeys(keyMaterial.getCipherKey(), keyMaterial.getMacKey(), keyMaterial.getIv(), null, index);
   }
 
   private byte[] getBaseMaterial(byte[] seed) {

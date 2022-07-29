@@ -8,6 +8,7 @@ package org.whispersystems.libsignal.groups.ratchet;
 
 import org.whispersystems.libsignal.kdf.HKDFv3;
 import org.whispersystems.libsignal.util.ByteUtil;
+import org.whispersystems.libsignal.logging.Log;
 
 /**
  * The final symmetric material (IV and Cipher Key) used for encrypting
@@ -24,6 +25,9 @@ public class SenderMessageKey {
 
   public SenderMessageKey(int iteration, byte[] seed) {
     byte[] derivative = new HKDFv3().deriveSecrets(seed, "WhisperGroup".getBytes(), 48);
+
+    Log.i("kdf.deriveSecrets", "");
+
     byte[][] parts    = ByteUtil.split(derivative, 16, 32);
 
     this.iteration = iteration;

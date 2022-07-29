@@ -31,6 +31,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 
+import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -284,8 +285,9 @@ public class SessionState {
 
       if (messageKey.getIndex() == counter) {
         result = new MessageKeys(new SecretKeySpec(messageKey.getCipherKey().toByteArray(), "AES"),
-                                 new SecretKeySpec(messageKey.getMacKey().toByteArray(), "HmacSHA256"),
-                                 new IvParameterSpec(messageKey.getIv().toByteArray()),
+                                 new SecretKeySpec(messageKey.getMacKey().toByteArray(), "HmacSHA256"), //dtsonov: update HmacSHA algorithm.
+                                 new GCMParameterSpec(128, messageKey.getIv().toByteArray()),
+                                 null,
                                  messageKey.getIndex());
 
         messageKeyIterator.remove();

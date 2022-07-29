@@ -21,6 +21,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
 
+import org.whispersystems.libsignal.logging.Log;
+
 public class RatchetingSession {
 
   public static void initializeSession(SessionState sessionState, SymmetricSignalProtocolParameters parameters)
@@ -131,6 +133,8 @@ public class RatchetingSession {
     HKDF     kdf                = new HKDFv3();
     byte[]   derivedSecretBytes = kdf.deriveSecrets(masterSecret, "WhisperText".getBytes(), 64);
     byte[][] derivedSecrets     = ByteUtil.split(derivedSecretBytes, 32, 32);
+
+    Log.i("kdf.deriveSecrets", "");
 
     return new DerivedKeys(new RootKey(kdf, derivedSecrets[0]),
                            new ChainKey(kdf, derivedSecrets[1], 0));

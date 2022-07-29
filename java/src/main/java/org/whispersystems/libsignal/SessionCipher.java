@@ -24,9 +24,16 @@ import org.whispersystems.libsignal.state.SignedPreKeyStore;
 import org.whispersystems.libsignal.util.ByteUtil;
 import org.whispersystems.libsignal.util.Pair;
 import org.whispersystems.libsignal.util.guava.Optional;
+import org.whispersystems.libsignal.logging.Log;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.spec.AlgorithmParameterSpec;
+import java.security.spec.KeySpec;
+
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -35,8 +42,13 @@ import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
+import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
+
 
 import static org.whispersystems.libsignal.state.SessionState.UnacknowledgedPreKeyMessageItems;
 
@@ -49,8 +61,8 @@ import static org.whispersystems.libsignal.state.SessionState.UnacknowledgedPreK
  *
  * @author Moxie Marlinspike
  */
-public class SessionCipher {
 
+public class SessionCipher {
   public static final Object SESSION_LOCK = new Object();
 
   private final SessionStore          sessionStore;
@@ -58,6 +70,9 @@ public class SessionCipher {
   private final SessionBuilder        sessionBuilder;
   private final PreKeyStore           preKeyStore;
   private final SignalProtocolAddress remoteAddress;
+  private final static String AES_GCM = "AES/GCM/NoPadding";
+  private final GcmCipher gcmCipher = new GcmCipher();
+
 
   /**
    * Construct a SessionCipher for encrypt/decrypt operations on a session.
@@ -100,6 +115,7 @@ public class SessionCipher {
       int           sessionVersion  = sessionState.getSessionVersion();
 
       byte[]            ciphertextBody    = getCiphertext(messageKeys, paddedMessage);
+
       CiphertextMessage ciphertextMessage = new SignalMessage(sessionVersion, messageKeys.getMacKey(),
                                                               senderEphemeral, chainKey.getIndex(),
                                                               previousCounter, ciphertextBody,
@@ -178,6 +194,7 @@ public class SessionCipher {
     synchronized (SESSION_LOCK) {
       SessionRecord     sessionRecord    = sessionStore.loadSession(remoteAddress);
       Optional<Integer> unsignedPreKeyId = sessionBuilder.process(sessionRecord, ciphertext);
+
       byte[]            plaintext        = decrypt(sessionRecord, ciphertext.getWhisperMessage());
 
       callback.handlePlaintext(plaintext);
@@ -206,7 +223,7 @@ public class SessionCipher {
    */
   public byte[] decrypt(SignalMessage ciphertext)
       throws InvalidMessageException, DuplicateMessageException, LegacyMessageException,
-      NoSessionException, UntrustedIdentityException
+              NoSessionException, UntrustedIdentityException
   {
     return decrypt(ciphertext, new NullDecryptionCallback());
   }
@@ -230,9 +247,8 @@ public class SessionCipher {
    * @throws NoSessionException if there is no established session for this contact.
    */
   public byte[] decrypt(SignalMessage ciphertext, DecryptionCallback callback)
-      throws InvalidMessageException, DuplicateMessageException, LegacyMessageException,
-             NoSessionException, UntrustedIdentityException
-  {
+          throws NoSessionException, InvalidMessageException, DuplicateMessageException,
+                  LegacyMessageException, UntrustedIdentityException {
     synchronized (SESSION_LOCK) {
 
       if (!sessionStore.containsSession(remoteAddress)) {
@@ -240,7 +256,8 @@ public class SessionCipher {
       }
 
       SessionRecord sessionRecord = sessionStore.loadSession(remoteAddress);
-      byte[]        plaintext     = decrypt(sessionRecord, ciphertext);
+
+      byte[] plaintext = decrypt(sessionRecord, ciphertext);
 
       if (!identityKeyStore.isTrustedIdentity(remoteAddress, sessionRecord.getSessionState().getRemoteIdentityKey(), IdentityKeyStore.Direction.RECEIVING)) {
         throw new UntrustedIdentityException(remoteAddress.getName(), sessionRecord.getSessionState().getRemoteIdentityKey());
@@ -248,7 +265,7 @@ public class SessionCipher {
 
       identityKeyStore.saveIdentity(remoteAddress, sessionRecord.getSessionState().getRemoteIdentityKey());
 
-      callback.handlePlaintext(plaintext);
+      callback.handlePlaintext(plaintext); //dtsonov: Do decryption (ln:243) in CB.handle(decrypt). Why is this CB for / Is it necessary ?
 
       sessionStore.storeSession(remoteAddress, sessionRecord);
 
@@ -257,8 +274,7 @@ public class SessionCipher {
   }
 
   private byte[] decrypt(SessionRecord sessionRecord, SignalMessage ciphertext)
-      throws DuplicateMessageException, LegacyMessageException, InvalidMessageException
-  {
+          throws DuplicateMessageException, LegacyMessageException, InvalidMessageException {
     synchronized (SESSION_LOCK) {
       Iterator<SessionState> previousStates = sessionRecord.getPreviousSessionStates().iterator();
       List<Exception>        exceptions     = new LinkedList<>();
@@ -292,8 +308,7 @@ public class SessionCipher {
   }
 
   private byte[] decrypt(SessionState sessionState, SignalMessage ciphertextMessage)
-      throws InvalidMessageException, DuplicateMessageException, LegacyMessageException
-  {
+          throws InvalidMessageException, DuplicateMessageException, LegacyMessageException {
     if (!sessionState.hasSenderChain()) {
       throw new InvalidMessageException("Uninitialized session!");
     }
@@ -318,7 +333,7 @@ public class SessionCipher {
 
     sessionState.clearUnacknowledgedPreKeyMessage();
 
-    return plaintext;
+    return plaintext; //dtsonov: Do decryption here.
   }
 
   public int getRemoteRegistrationId() {
@@ -392,27 +407,45 @@ public class SessionCipher {
     return chainKey.getMessageKeys();
   }
 
+  /*dtsonov: GcmCipher.java
+    todo: test with the app
+  * */
+
+  private byte[] getCiphertext(MessageKeys messageKeys, byte[] plaintext) {
+    Log.i("getCiphertext", "getCiphertext");
+    //return getCiphertext(messageKeys, plaintext);
+    return gcmCipher.encrypt_v4(messageKeys, plaintext);
+    //return "getCiphertext".toString().getBytes();
+  }
+
+  private byte[] getPlaintext(MessageKeys messageKeys, byte[] cipherText) {
+    Log.i("getPlaintext", "getPlaintext");
+    //return getPlaintext(messageKeys, cipherText);
+    return gcmCipher.decrypt_v4(messageKeys, cipherText);
+    //return "getPlaintext".toString().getBytes();
+  }
+
+/*  dtsonov: The original implementation beneath:
+
   private byte[] getCiphertext(MessageKeys messageKeys, byte[] plaintext) {
     try {
       Cipher cipher = getCipher(Cipher.ENCRYPT_MODE, messageKeys.getCipherKey(), messageKeys.getIv());
       return cipher.doFinal(plaintext);
-    } catch (IllegalBlockSizeException | BadPaddingException e) {
+    } catch (IllegalBlockSizeException | BadPaddingException e) { //dtsonov: use AES-GCM
       throw new AssertionError(e);
     }
   }
 
-  private byte[] getPlaintext(MessageKeys messageKeys, byte[] cipherText)
-      throws InvalidMessageException
-  {
+  private byte[] getPlaintext(MessageKeys messageKeys, byte[] cipherText) throws InvalidMessageException {
     try {
       Cipher cipher = getCipher(Cipher.DECRYPT_MODE, messageKeys.getCipherKey(), messageKeys.getIv());
       return cipher.doFinal(cipherText);
-    } catch (IllegalBlockSizeException | BadPaddingException e) {
+    } catch (IllegalBlockSizeException | BadPaddingException e) { //dtsonov: use AES-GCM
       throw new InvalidMessageException(e);
     }
   }
 
-  private Cipher getCipher(int mode, SecretKeySpec key, IvParameterSpec iv) {
+  private Cipher getCipher(int mode, SecretKeySpec key, IvParameterSpec iv) { // dtsonov: obsolete
     try {
       Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
       cipher.init(mode, key, iv);
@@ -423,9 +456,11 @@ public class SessionCipher {
       throw new AssertionError(e);
     }
   }
+  */
 
   private static class NullDecryptionCallback implements DecryptionCallback {
     @Override
     public void handlePlaintext(byte[] plaintext) {}
   }
+
 }
